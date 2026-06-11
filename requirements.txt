@@ -1,0 +1,6 @@
+langchain
+langchain-aws
+langchain-community
+boto3
+opensearch-py
+EOF
