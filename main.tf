@@ -56,10 +56,25 @@ resource "aws_apigatewayv2_route" "query_route" {
   route_key = "POST /query"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
-
+resource "aws_opensearchserverless_security_policy" "encryption" {
+  name        = "southwest-encryption-policy"
+  type        = "encryption"
+  description = "Encryption policy for RAG vector store"
+  policy = jsonencode({
+    Rules = [
+      {
+        ResourceType = "collection"
+        Resource     = ["collection/southwest-vectors"]
+      }
+    ]
+    AWSOwnedKey = true
+  })
+}
 resource "aws_opensearchserverless_collection" "rag_vs" {
   name = "southwest-vectors"
   type = "VECTORSEARCH"
+
+  depends_on = [aws_opensearchserverless_security_policy.encryption]
 }
 
 output "api_url" {
