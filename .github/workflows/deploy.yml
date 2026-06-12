@@ -12,28 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Build Lambda package
-        run: |
-          pip install -r requirements.txt \
-            --platform manylinux2014_x86_64 \
-            --target package/ \
-            --implementation cp \
-            --python-version 3.11 \
-            --only-binary=:all: \
-            --no-cache-dir
-          find package -name "*.dist-info" -type d -exec rm -rf {} +
-          find package -name "__pycache__" -type d -exec rm -rf {} +
-          find package -name "tests" -type d -exec rm -rf {} +
-          cp lambda_function.py package/
-          cd package && zip -r ../lambda.zip . -x "*.pyc"
-          cd ..
-          ls -lh lambda.zip
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -44,11 +22,27 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
+      # Step 1: Create ECR repo first (if it doesn't exist) so we can push the image
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Plan
-        run: terraform plan -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}"
+      - name: Terraform Apply (ECR only)
+        run: terraform apply -auto-approve -target=aws_ecr_repository.rag_repo -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}"
 
-      - name: Terraform Apply
+      - name: Get AWS account ID
+        id: aws-account
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t southwest-rag .
+          docker tag southwest-rag:latest ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com/southwest-rag:latest
+          docker push ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com/southwest-rag:latest
+
+      # Step 2: Now deploy everything else (Lambda can now find the image)
+      - name: Terraform Apply (full)
         run: terraform apply -auto-approve -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}"

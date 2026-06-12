@@ -10,17 +10,15 @@ provider "aws" {
   region = var.aws_region
 }
 
-# S3 bucket — stores documents, FAISS index, and lambda zip
-resource "aws_s3_bucket" "rag_docs" {
-  bucket = "southwest-rag-docs-${var.env}-2"
+# ECR repository — stores Docker image
+resource "aws_ecr_repository" "rag_repo" {
+  name         = "southwest-rag"
+  force_delete = true
 }
 
-# Upload lambda.zip to S3 (avoids 70MB direct upload limit)
-resource "aws_s3_object" "lambda_zip" {
-  bucket = aws_s3_bucket.rag_docs.id
-  key    = "lambda.zip"
-  source = "lambda.zip"
-  etag   = filemd5("lambda.zip")
+# S3 bucket — stores documents and FAISS index
+resource "aws_s3_bucket" "rag_docs" {
+  bucket = "southwest-rag-docs-${var.env}-2"
 }
 
 # IAM role for Lambda
@@ -46,18 +44,14 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
 
-# Lambda function — deployed via S3
+# Lambda function — deployed as Docker container image
 resource "aws_lambda_function" "rag_handler" {
-  function_name    = "southwest-rag"
-  role             = aws_iam_role.lambda_role.arn
-  handler          = "lambda_function.handler"
-  runtime          = "python3.11"
-  timeout          = 60
-  memory_size      = 512
-
-  s3_bucket        = aws_s3_bucket.rag_docs.id
-  s3_key           = aws_s3_object.lambda_zip.key
-  source_code_hash = filebase64sha256("lambda.zip")
+  function_name = "southwest-rag"
+  role          = aws_iam_role.lambda_role.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.rag_repo.repository_url}:latest"
+  timeout       = 60
+  memory_size   = 1024
 
   environment {
     variables = {
@@ -65,8 +59,6 @@ resource "aws_lambda_function" "rag_handler" {
       OPENAI_API_KEY = var.openai_api_key
     }
   }
-
-  depends_on = [aws_s3_object.lambda_zip]
 }
 
 # API Gateway
@@ -103,4 +95,8 @@ resource "aws_lambda_permission" "apigw" {
 
 output "api_url" {
   value = aws_apigatewayv2_stage.default.invoke_url
+}
+
+output "ecr_repo_url" {
+  value = aws_ecr_repository.rag_repo.repository_url
 }

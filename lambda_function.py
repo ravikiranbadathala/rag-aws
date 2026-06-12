@@ -11,7 +11,8 @@ def handler(event, context):
     query = body["query"]
 
     embeddings = OpenAIEmbeddings(
-        api_key=os.environ["OPENAI_API_KEY"]
+        api_key=os.environ["OPENAI_API_KEY"],
+        model="text-embedding-3-small"
     )
 
     s3 = boto3.client("s3")
