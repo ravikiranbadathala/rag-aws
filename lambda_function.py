@@ -46,9 +46,8 @@ Question: {query}"""
 
 
 def rerank_documents(query, docs, top_k=3):
-    """Use LLM to score relevance of each doc to the query, return top_k"""
     scored = []
-    for i, d in enumerate(docs):
+    for d in docs:
         prompt = f"""Rate how relevant this passage is to the question, on a scale of 0-10.
 Respond with ONLY a number.
 
@@ -68,10 +67,22 @@ Score:"""
     return [d for _, d in scored[:top_k]]
 
 
+def generate_hypothetical_answer(query):
+    """Generate a hypothetical answer to embed for retrieval (HyDE)"""
+    prompt = f"""Write a short hypothetical passage (2-3 sentences) that would answer this question,
+as if it came from a company policy document. Be specific and use plausible details.
+
+Question: {query}
+
+Hypothetical passage:"""
+    response = llm.invoke(prompt)
+    return response.content
+
+
 def handler(event, context):
     body = json.loads(event["body"])
     query = body["query"]
-    mode = body.get("mode", "naive")  # "naive", "multi_query", "rerank"
+    mode = body.get("mode", "naive")  # "naive", "multi_query", "rerank", "hyde"
 
     vectorstore = get_vectorstore()
 
@@ -88,11 +99,15 @@ def handler(event, context):
         context_text = "\n\n".join(d.page_content for d in all_docs[:5])
 
     elif mode == "rerank":
-        # Retrieve more candidates than needed
         candidates = vectorstore.similarity_search(query, k=8)
-        # Rerank with LLM, keep top 3
         top_docs = rerank_documents(query, candidates, top_k=3)
         context_text = "\n\n".join(d.page_content for d in top_docs)
+
+    elif mode == "hyde":
+        # Generate hypothetical answer, embed THAT instead of the query
+        hypothetical = generate_hypothetical_answer(query)
+        docs = vectorstore.similarity_search(hypothetical, k=3)
+        context_text = "\n\n".join(d.page_content for d in docs)
 
     else:
         docs = vectorstore.similarity_search(query, k=3)
