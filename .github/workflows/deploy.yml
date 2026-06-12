@@ -7,7 +7,24 @@ on:
       - main
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest test_lambda.py -v
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -22,7 +39,6 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
-      # Step 1: Create ECR repo first (if it doesn't exist) so we can push the image
       - name: Terraform Init
         run: terraform init
 
@@ -43,6 +59,9 @@ jobs:
           docker tag southwest-rag:latest ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com/southwest-rag:latest
           docker push ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com/southwest-rag:latest
 
-      # Step 2: Now deploy everything else (Lambda can now find the image)
       - name: Terraform Apply (full)
         run: terraform apply -auto-approve -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}"
+
+      - name: Update Lambda with latest image
+        run: |
+          aws lambda update-function-code --function-name southwest-rag --image-uri ${{ steps.aws-account.outputs.account_id }}.dkr.ecr.us-east-1.amazonaws.com/southwest-rag:latest
