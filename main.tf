@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "southwest-tfstate-ravi-2026"
+    key    = "rag-aws/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 }
