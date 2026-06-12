@@ -3,3 +3,4 @@ langchain-openai
 langchain-community
 faiss-cpu
 boto3
+numpy<2
