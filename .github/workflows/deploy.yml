@@ -19,9 +19,14 @@ jobs:
 
       - name: Build Lambda package
         run: |
-          pip install -r requirements.txt -t package/ --no-cache-dir
+          pip install -r requirements.txt \
+            --platform manylinux2014_x86_64 \
+            --target package/ \
+            --implementation cp \
+            --python-version 3.11 \
+            --only-binary=:all: \
+            --no-cache-dir
           find package -name "*.dist-info" -type d -exec rm -rf {} +
-          find package -name "*.egg-info" -type d -exec rm -rf {} +
           find package -name "__pycache__" -type d -exec rm -rf {} +
           find package -name "tests" -type d -exec rm -rf {} +
           cp lambda_function.py package/
