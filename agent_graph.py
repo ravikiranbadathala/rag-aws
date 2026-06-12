@@ -109,17 +109,25 @@ Answer:"""
 # Agent 4: Critic Agent (A2A feedback loop)
 # ───────────────────────────────
 def critic_agent(state: AgentState) -> AgentState:
-    prompt = f"""You are a critic reviewing an AI's answer for groundedness.
+    prompt = f"""You are a critic reviewing an AI's answer.
 
 Question: {state['query']}
 Context provided: {chr(10).join(state['retrieved_chunks'])}
 Answer given: {state['answer']}
 
-Is this answer well-grounded in the context, and does it actually address the question?
-Respond with ONLY "SUFFICIENT" or "INSUFFICIENT"."""
+Evaluate on two dimensions:
+1. Is the answer grounded in the context (not hallucinated)?
+2. Does the context actually contain information relevant to the question?
+
+If the context does NOT contain relevant information (answer says "not found" / "I don't know"),
+respond "OUT_OF_SCOPE".
+If grounded AND relevant, respond "SUFFICIENT".
+Otherwise respond "INSUFFICIENT".
+
+Respond with ONLY one word: SUFFICIENT, INSUFFICIENT, or OUT_OF_SCOPE."""
 
     critique = llm.invoke(prompt).content.strip().upper()
-    is_grounded = "SUFFICIENT" in critique
+    is_grounded = "SUFFICIENT" in critique and "INSUFFICIENT" not in critique
 
     return {**state, "critique": critique, "is_grounded": is_grounded}
 
