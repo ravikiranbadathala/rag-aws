@@ -2,10 +2,20 @@ provider "aws" {
   region = var.aws_region
 }
 
+# S3 bucket — stores documents, FAISS index, and lambda zip
 resource "aws_s3_bucket" "rag_docs" {
   bucket = "southwest-rag-docs-${var.env}-2"
 }
 
+# Upload lambda.zip to S3 (avoids 70MB direct upload limit)
+resource "aws_s3_object" "lambda_zip" {
+  bucket = aws_s3_bucket.rag_docs.id
+  key    = "lambda.zip"
+  source = "lambda.zip"
+  etag   = filemd5("lambda.zip")
+}
+
+# IAM role for Lambda
 resource "aws_iam_role" "lambda_role" {
   name = "rag-lambda-role-2"
   assume_role_policy = jsonencode({
@@ -28,8 +38,8 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
 
+# Lambda function — deployed via S3
 resource "aws_lambda_function" "rag_handler" {
-  filename         = "lambda.zip"
   function_name    = "southwest-rag"
   role             = aws_iam_role.lambda_role.arn
   handler          = "lambda_function.handler"
@@ -37,14 +47,21 @@ resource "aws_lambda_function" "rag_handler" {
   timeout          = 60
   memory_size      = 512
 
+  s3_bucket        = aws_s3_bucket.rag_docs.id
+  s3_key           = aws_s3_object.lambda_zip.key
+  source_code_hash = filebase64sha256("lambda.zip")
+
   environment {
     variables = {
       S3_BUCKET      = aws_s3_bucket.rag_docs.bucket
       OPENAI_API_KEY = var.openai_api_key
     }
   }
+
+  depends_on = [aws_s3_object.lambda_zip]
 }
 
+# API Gateway
 resource "aws_apigatewayv2_api" "rag_api" {
   name          = "rag-api"
   protocol_type = "HTTP"

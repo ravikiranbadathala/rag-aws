@@ -19,9 +19,15 @@ jobs:
 
       - name: Build Lambda package
         run: |
-          pip install -r requirements.txt -t package/
+          pip install -r requirements.txt -t package/ --no-cache-dir
+          find package -name "*.dist-info" -type d -exec rm -rf {} +
+          find package -name "*.egg-info" -type d -exec rm -rf {} +
+          find package -name "__pycache__" -type d -exec rm -rf {} +
+          find package -name "tests" -type d -exec rm -rf {} +
           cp lambda_function.py package/
-          cd package && zip -r ../lambda.zip .
+          cd package && zip -r ../lambda.zip . -x "*.pyc"
+          cd ..
+          ls -lh lambda.zip
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
