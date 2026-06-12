@@ -1,5 +1,5 @@
 langchain
-langchain-aws
+langchain-openai
 langchain-community
 boto3
-opensearch-py
+faiss-cpu

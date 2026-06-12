@@ -3,11 +3,11 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "rag_docs" {
-  bucket = "southwest-rag-docs-${var.env}"
+  bucket = "southwest-rag-docs-${var.env}-2"
 }
 
 resource "aws_iam_role" "lambda_role" {
-  name = "rag-lambda-role"
+  name = "rag-lambda-role-2"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -18,9 +18,14 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_bedrock" {
+resource "aws_iam_role_policy_attachment" "lambda_s3" {
   role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
 
 resource "aws_lambda_function" "rag_handler" {
@@ -34,8 +39,8 @@ resource "aws_lambda_function" "rag_handler" {
 
   environment {
     variables = {
-      OPENSEARCH_ENDPOINT = aws_opensearchserverless_collection.rag_vs.collection_endpoint
-      S3_BUCKET           = aws_s3_bucket.rag_docs.bucket
+      S3_BUCKET      = aws_s3_bucket.rag_docs.bucket
+      OPENAI_API_KEY = var.openai_api_key
     }
   }
 }
@@ -46,9 +51,9 @@ resource "aws_apigatewayv2_api" "rag_api" {
 }
 
 resource "aws_apigatewayv2_integration" "lambda_integration" {
-  api_id             = aws_apigatewayv2_api.rag_api.id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = aws_lambda_function.rag_handler.invoke_arn
+  api_id           = aws_apigatewayv2_api.rag_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.rag_handler.invoke_arn
 }
 
 resource "aws_apigatewayv2_route" "query_route" {
@@ -56,27 +61,21 @@ resource "aws_apigatewayv2_route" "query_route" {
   route_key = "POST /query"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
-resource "aws_opensearchserverless_security_policy" "encryption" {
-  name        = "southwest-encryption-policy"
-  type        = "encryption"
-  description = "Encryption policy for RAG vector store"
-  policy = jsonencode({
-    Rules = [
-      {
-        ResourceType = "collection"
-        Resource     = ["collection/southwest-vectors"]
-      }
-    ]
-    AWSOwnedKey = true
-  })
-}
-resource "aws_opensearchserverless_collection" "rag_vs" {
-  name = "southwest-vectors"
-  type = "VECTORSEARCH"
 
-  depends_on = [aws_opensearchserverless_security_policy.encryption]
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.rag_api.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "apigw" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.rag_handler.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.rag_api.execution_arn}/*/*"
 }
 
 output "api_url" {
-  value = aws_apigatewayv2_api.rag_api.api_endpoint
+  value = aws_apigatewayv2_stage.default.invoke_url
 }
