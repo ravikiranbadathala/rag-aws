@@ -5,3 +5,4 @@ faiss-cpu==1.8.0
 numpy<2
 boto3
 tiktoken==0.7.0
+langgraph
