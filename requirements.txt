@@ -1,6 +1,6 @@
 langchain
 langchain-openai
 langchain-community
-faiss-cpu
-boto3
+faiss-cpu==1.8.0
 numpy<2
+boto3
