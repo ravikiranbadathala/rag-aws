@@ -4,7 +4,6 @@ import os
 import tempfile
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
-from langchain.chains import RetrievalQA
 
 def handler(event, context):
     body = json.loads(event["body"])
@@ -28,19 +27,27 @@ def handler(event, context):
             allow_dangerous_deserialization=True
         )
 
+    # Retrieve top 3 relevant chunks
+    docs = vectorstore.similarity_search(query, k=3)
+    context_text = "\n\n".join(d.page_content for d in docs)
+
+    # Call LLM directly
     llm = ChatOpenAI(
         model="gpt-3.5-turbo",
         api_key=os.environ["OPENAI_API_KEY"]
     )
 
-    chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 3})
-    )
+    prompt = f"""Answer the question using only the context below.
 
-    result = chain.invoke(query)
+Context:
+{context_text}
+
+Question: {query}
+Answer:"""
+
+    response = llm.invoke(prompt)
 
     return {
         "statusCode": 200,
-        "body": json.dumps({"answer": result["result"]})
+        "body": json.dumps({"answer": response.content})
     }
